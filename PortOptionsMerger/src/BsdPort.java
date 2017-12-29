@@ -90,8 +90,10 @@ public class BsdPort implements Comparable<BsdPort> {
         }
     }
 
-    public OptionStatus getOptionStatus(String option) {
-        return optionsMap.getOrDefault(option, OptionStatus.NOT_DEFINED);
+    public void removeDuplicatingOptions(BsdPort parentPort) {
+        for (Map.Entry<String, OptionStatus> parentOptionEntry : parentPort.optionsMap.entrySet()) {
+            optionsMap.remove(parentOptionEntry.getKey(), parentOptionEntry.getValue());
+        }
     }
 
     public void writeOptions(Writer writer) throws IOException {

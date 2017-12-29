@@ -69,6 +69,7 @@ public class PortOptionsMerger {
     private BsdPort parseOptionsDirectory(Path optionsDirectory) {
         BsdPort port = new BsdPort(optionsDirectory.getFileName().toString());
         port.parseOptions(getFileLinesIterator(optionsDirectory.resolve(OPTIONS_FILE)));
+        port.removeDuplicatingOptions(globalPort);
         return port;
     }
 
