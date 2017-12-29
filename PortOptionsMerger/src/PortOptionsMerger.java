@@ -1,22 +1,30 @@
 import java.io.IOException;
+import java.io.PrintWriter;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.stream.Stream;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Set;
 
 public class PortOptionsMerger {
 
     private static final String BASE_PATH = "/usr/local/etc/poudriere.d/";
-    private static final String MAKEFILE_SUFFIX = "-make.conf";
+    private static final String MAKE_CONF_SUFFIX = "-make.conf";
     private static final String OPTIONS_DIRECTORY_SUFFIX = "-options";
-    private static final String CATEGORY_NAME_SPLITTER = "_";
-    private static final String MAKEFILE_SET_PREFIX = "OPTIONS_SET+=";
-    private static final String MAKEFILE_UNSET_PREFIX = "OPTIONS_UNSET+=";
+    private static final Path OPTIONS_FILE = Paths.get("options");
 
     private final String makeFileLocation;
     private final String optionsDirectoryLocation;
 
+    private final BsdPort globalPort = new BsdPort();
+    private final Set<BsdPort> portsSet = new HashSet<>();
+
     public PortOptionsMerger(String prefix) {
-        this.makeFileLocation = BASE_PATH + prefix + MAKEFILE_SUFFIX;
+        this.makeFileLocation = BASE_PATH + prefix + MAKE_CONF_SUFFIX;
         this.optionsDirectoryLocation = BASE_PATH + prefix + OPTIONS_DIRECTORY_SUFFIX;
     }
 
@@ -30,17 +38,38 @@ public class PortOptionsMerger {
     }
 
     public void merge() {
-        OptionsParser globalOptionsParser = new OptionsParser(MAKEFILE_SET_PREFIX, MAKEFILE_UNSET_PREFIX);
-        PortOptions globalOptions = parseOptionsFile(makeFileLocation, globalOptionsParser);
-        System.out.print(globalOptions.getFormatted(MAKEFILE_SET_PREFIX, MAKEFILE_UNSET_PREFIX));
-    }
-
-    private PortOptions parseOptionsFile(String fileLocation, OptionsParser optionsParser) {
+        globalPort.parseOptions(getFileLinesIterator(Paths.get(makeFileLocation)));
         try {
-            Stream<String> fileLinesStream = Files.lines(Paths.get(fileLocation));
-            return optionsParser.parse(fileLinesStream.iterator());
+            Files.list(Paths.get(optionsDirectoryLocation))
+                    .filter(path -> Files.isReadable(path) && Files.isExecutable(path) && Files.isDirectory(path))
+                    .forEach(path -> portsSet.add(parseOptionsDirectory(path)));
         } catch (IOException e) {
-            throw new IllegalStateException("Failed to read file " + fileLocation, e);
+            e.printStackTrace();
+        }
+        try (PrintWriter pw = new PrintWriter(System.out)) {
+            globalPort.writeOptions(pw);
+            List<BsdPort> portList = new ArrayList<>(portsSet);
+            Collections.sort(portList);
+            for (BsdPort port : portList) {
+                port.writeOptions(pw);
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
         }
     }
+
+    private Iterator<String> getFileLinesIterator(Path filePath) {
+        try {
+            return Files.lines(filePath).iterator();
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to read file " + filePath, e);
+        }
+    }
+
+    private BsdPort parseOptionsDirectory(Path optionsDirectory) {
+        BsdPort port = new BsdPort(optionsDirectory.getFileName().toString());
+        port.parseOptions(getFileLinesIterator(optionsDirectory.resolve(OPTIONS_FILE)));
+        return port;
+    }
+
 }
