@@ -11,14 +11,16 @@ import java.util.stream.Collectors;
 
 public class BsdPort implements Comparable<BsdPort> {
 
+    private static final String SET = "_SET+=";
+    private static final String UNSET = "_UNSET+=";
     private static final Pattern SEPARATION_PATTERN = Pattern.compile("\\s");
-    private static final Pattern OPTION_PATTERN = Pattern.compile("[\\p{Upper}\\p{Digit}_]+");
+    private static final Pattern OPTION_PATTERN = Pattern.compile("[\\p{Alnum}_]+");
+    private static final Pattern CATEGORY_NAME_SEPARATOR_PATTERN = Pattern.compile("_");
     private static final String NEW_LINE = System.lineSeparator();
     private static final String NEW_OPTION_LINE = "\\" + System.lineSeparator() + "\t\t\t";
-    private static final int NEW_LINE_TRESHOLD = 80 - 15;
+    private static final int NEW_LINE_TRESHOLD = 50;
 
     private final Map<String, OptionStatus> optionsMap = new HashMap<>();
-    private final String category;
     private final String name;
     private final String slashedName;
     private final String inOptionsSet;
@@ -26,14 +28,22 @@ public class BsdPort implements Comparable<BsdPort> {
     private final String outOptionsSet;
     private final String outOptionsUnset;
 
-    public BsdPort(String fullName) {
-        this.category = fullName.split("_")[0];
-        this.name = fullName.substring(category.length() + 1);
-        this.slashedName = category + '/' + name;
+    public BsdPort(String name) {
+        this.name = name;
+        this.slashedName = CATEGORY_NAME_SEPARATOR_PATTERN.matcher(name).replaceFirst("/");
         this.inOptionsSet = "OPTIONS_FILE_SET+=";
         this.inOptionsUnset = "OPTIONS_FILE_UNSET+=";
-        this.outOptionsSet = name + "_SET+=  ";
-        this.outOptionsUnset = name + "_UNSET+=";
+        this.outOptionsSet = name + SET;
+        this.outOptionsUnset = name + UNSET;
+    }
+
+    public BsdPort() {
+        this.name = "OPTIONS";
+        this.slashedName = "Global ports";
+        this.inOptionsSet = name + SET;
+        this.inOptionsUnset = name + UNSET;
+        this.outOptionsSet = name + SET;
+        this.outOptionsUnset = name + UNSET;
     }
 
     @Override
@@ -41,26 +51,15 @@ public class BsdPort implements Comparable<BsdPort> {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         BsdPort that = (BsdPort) o;
-        return Objects.equals(slashedName, that.slashedName);
+        return Objects.equals(name, that.name);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(slashedName);
+        return Objects.hash(name);
     }
 
-    public BsdPort() {
-        this.category = "Global";
-        this.name = "OPTIONS";
-        this.slashedName = "Global ports";
-        this.inOptionsSet = name + "_SET+=";
-        this.inOptionsUnset = name + "_UNSET+=";
-        this.outOptionsSet = name + "_SET+=  ";
-        this.outOptionsUnset = name + "_UNSET+=";
-    }
-
-
-    public void parseOptions(Iterator<String> lineIterator) {
+    public void parseOptionsFile(Iterator<String> lineIterator) {
         OptionStatus lineStatus = OptionStatus.NOT_DEFINED;
         while (lineIterator.hasNext()) {
             String line = lineIterator.next().trim();
@@ -77,6 +76,27 @@ public class BsdPort implements Comparable<BsdPort> {
                 if (options.length > 0 && !"\\".equals(options[options.length-1]))
                     lineStatus = OptionStatus.NOT_DEFINED;
             }
+        }
+    }
+
+    public void parseMakeFile(String firstLine, Iterator<String> lineIterator) {
+        OptionStatus lineStatus;
+        String line;
+        if (firstLine.startsWith(outOptionsSet)) {
+            lineStatus = OptionStatus.SET;
+            line = firstLine.substring(outOptionsSet.length());
+        } else if (firstLine.startsWith(outOptionsUnset)) {
+            lineStatus = OptionStatus.UNSET;
+            line = firstLine.substring(outOptionsUnset.length());
+        } else {
+            return;
+        }
+        String[] options = SEPARATION_PATTERN.split(line);
+        addOptions(lineStatus, options);
+        while ((options.length == 0 || "\\".equals(options[options.length-1])) && lineIterator.hasNext()) {
+            line = lineIterator.next().trim();
+            options = SEPARATION_PATTERN.split(line);
+            addOptions(lineStatus, options);
         }
     }
 
@@ -150,9 +170,13 @@ public class BsdPort implements Comparable<BsdPort> {
         return outputBuilder.toString();
     }
 
+    public String getName() {
+        return name;
+    }
+
     @Override
     public int compareTo(BsdPort o) {
-        return this.slashedName.compareTo(o.slashedName);
+        return this.name.compareTo(o.name);
     }
 
     public enum OptionStatus {
