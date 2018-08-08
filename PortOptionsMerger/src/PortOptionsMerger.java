@@ -91,9 +91,12 @@ public class PortOptionsMerger {
     }
 
     private void parseOptionsDirectory(Path optionsDirectory) {
+        Path optionsFilePath = optionsDirectory.resolve(OPTIONS_FILE);
+        if (!(Files.isReadable(optionsFilePath) && Files.isRegularFile(optionsFilePath)))
+            return;
         String portName = optionsDirectory.getFileName().toString();
         BsdPort port = portsMap.computeIfAbsent(portName, BsdPort::new);
-        port.parseOptionsFile(getFileLinesIterator(optionsDirectory.resolve(OPTIONS_FILE)));
+        port.parseOptionsFile(getFileLinesIterator(optionsFilePath));
     }
 
     private void deduplicateOptions() {
